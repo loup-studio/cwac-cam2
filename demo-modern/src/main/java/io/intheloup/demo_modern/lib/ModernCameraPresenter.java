@@ -1,7 +1,9 @@
 package io.intheloup.demo_modern.lib;
 
 import android.annotation.SuppressLint;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ResultReceiver;
@@ -17,10 +19,13 @@ import com.commonsware.cwac.cam2.ErrorConstants;
 import com.commonsware.cwac.cam2.Facing;
 import com.commonsware.cwac.cam2.FlashMode;
 import com.commonsware.cwac.cam2.FocusMode;
+import com.commonsware.cwac.cam2.ImageContext;
+import com.commonsware.cwac.cam2.PictureTransaction;
 
 import org.greenrobot.eventbus.Subscribe;
 import org.greenrobot.eventbus.ThreadMode;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
@@ -28,19 +33,21 @@ import java.util.LinkedList;
  * Created by Lukasz - lukasz.pili@gmail.com on 27/02/2017.
  */
 
-class Presenter {
+class ModernCameraPresenter {
 
     private final ModernCameraView view;
     private final CameraController controller;
 
     private boolean isVideoRecording = false;
 
-    public Presenter(ModernCameraView view) {
+    private Uri uri;
+
+    public ModernCameraPresenter(ModernCameraView view) {
         this.view = view;
 
         controller = new CameraController(FocusMode.CONTINUOUS, new ErrorResultReceiver(), true, false);
 
-        CameraEngine engine = CameraEngine.buildInstance(view.getContext(), null);
+        CameraEngine engine = CameraEngine.buildInstance(view.getContext(), CameraEngine.ID.CLASSIC);
         engine.setPreferredFlashModes(new ArrayList<FlashMode>());
 
         controller.setEngine(engine, new CameraSelectionCriteria.Builder()
@@ -62,6 +69,21 @@ class Presenter {
         AbstractCameraActivity.BUS.unregister(this);
         shutdown();
         controller.destroy();
+    }
+
+    boolean onBackPressed() {
+        if (uri == null) {
+            return false;
+        }
+
+        new File(uri.getPath()).delete();
+        view.bindClearPicture();
+        uri = null;
+        return true;
+    }
+
+    void didClickTakePicture() {
+        takePicture();
     }
 
     void didChangeZoom(int delta) {
@@ -172,6 +194,29 @@ class Presenter {
         }
     }
 
+    private void takePicture() {
+        if (!Environment.MEDIA_MOUNTED
+                .equals(Environment.getExternalStorageState())) {
+            return;
+        }
+
+        File root = new File(view.getContext().getExternalFilesDir(null), "modern-camera");
+        root.mkdirs();
+
+        File image = new File(root, "pic.jpg");
+        if (image.exists()) {
+            image.delete();
+        }
+
+        uri = Uri.fromFile(image);
+
+        PictureTransaction.Builder b = new PictureTransaction.Builder();
+        b.toUri(view.getContext(), uri, false, false);
+
+        Log.d(getClass().getSimpleName(), "takePicture: " + uri);
+        controller.takePicture(b.build());
+    }
+
     private void stopVideoRecording(boolean abandon) {
 //        setVideoFABToNormal();
 
@@ -186,6 +231,43 @@ class Presenter {
         }
     }
 
+//    protected Uri getOutputUri() {
+//        Uri output=null;
+//
+//        if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.JELLY_BEAN_MR1) {
+//            ClipData clipData=getIntent().getClipData();
+//
+//            if (clipData!=null && clipData.getItemCount() > 0) {
+//                output=clipData.getItemAt(0).getUri();
+//            }
+//        }
+//
+//        if (output==null) {
+//            output=getIntent().getParcelableExtra(MediaStore.EXTRA_OUTPUT);
+//        }
+//
+//        return(output);
+//    }
+
+    private void completeRequest(ImageContext imageContext, boolean isOK) {
+        if (!isOK) {
+            return;
+        }
+
+        Log.d(getClass().getSimpleName(), "completeRequest: ");
+        view.bindPicture(uri);
+    }
+
+    @SuppressWarnings("unused")
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onEventMainThread(CameraEngine.PictureTakenEvent event) {
+        if (event.exception == null) {
+            completeRequest(event.getImageContext(), true);
+        } else {
+            controller.postError(999, event.exception);
+            shutdown();
+        }
+    }
 
     @SuppressLint("ParcelCreator")
     private class ErrorResultReceiver extends ResultReceiver {

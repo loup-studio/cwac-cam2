@@ -1,6 +1,7 @@
 package io.intheloup.demo_modern.lib;
 
 import android.content.Context;
+import android.net.Uri;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
@@ -11,12 +12,10 @@ import android.widget.FrameLayout;
 import com.commonsware.cwac.cam2.CameraView;
 
 import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Created by Lukasz - lukasz.pili@gmail.com on 27/02/2017.
  */
-
 public class ModernCameraView extends FrameLayout {
 
     private static final int PINCH_ZOOM_DELTA = 20;
@@ -24,8 +23,9 @@ public class ModernCameraView extends FrameLayout {
     final ViewGroup previewStack = new FrameLayout(getContext());
     final CameraView cameraView = new CameraView(getContext());
     final ScaleGestureDetector scaleDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
+    final ModernCameraControlView controlView = new ModernCameraControlView(getContext());
 
-    private final Presenter presenter = new Presenter(this);
+    private final ModernCameraPresenter presenter = new ModernCameraPresenter(this);
 
     public ModernCameraView(Context context) {
         super(context);
@@ -45,6 +45,15 @@ public class ModernCameraView extends FrameLayout {
     private void init(Context context) {
         addView(previewStack, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         previewStack.addView(cameraView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        addView(controlView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        controlView.takePictureButton.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                presenter.didClickTakePicture();
+            }
+        });
     }
 
     @Override
@@ -57,6 +66,18 @@ public class ModernCameraView extends FrameLayout {
     protected void onDetachedFromWindow() {
         presenter.onDrop();
         super.onDetachedFromWindow();
+    }
+
+    public boolean onBackPressed() {
+        return presenter.onBackPressed();
+    }
+
+    void bindPicture(Uri uri) {
+        controlView.bindPicture(uri);
+    }
+
+    void bindClearPicture() {
+        controlView.bindClearPicture();
     }
 
     LinkedList<CameraView> bindCameras(int count) {
